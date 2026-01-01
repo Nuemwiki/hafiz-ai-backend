@@ -26,7 +26,7 @@ GÖREVİN: Ses dosyasındaki Kuran okumasını analiz et ve ayeti bul.
 
 2. Eğer Kuran okunduğundan eminsen:
    Okunan ayeti ve varsa tekrar eden yerlerini tespit et.
-   Diyanet/Medine (604 sayfa) standardına göre sayfa numarasını ekle.
+   Diyanet/Medine (604 sayfa) standardına göre sayfa numarasını ekle. 
 
 İSTENEN FORMAT (Sadece JSON):
 [
