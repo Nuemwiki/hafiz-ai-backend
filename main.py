@@ -1,53 +1,56 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 import google.generativeai as genai
 import os
 import json
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 
-# .env dosyasını yükle
+# .env yükle
 load_dotenv()
 api_key = os.getenv("GOOGLE_API_KEY")
 
 if not api_key:
-    raise ValueError("GOOGLE_API_KEY bulunamadı! .env dosyanı kontrol et.")
+    raise ValueError("GOOGLE_API_KEY bulunamadı!")
 
 genai.configure(api_key=api_key)
 
-# --- GEMINI AYARLARI ---
+# --- SYSTEM INSTRUCTION (GÜNCELLENDİ) ---
+# Rahman suresi hatasını engellemek için kuralları sertleştirdik.
 system_instruction = """
-GÖREVİN: Profesyonel bir Kuran Analiz Motoru olarak çalışmak.
-Ses dosyasındaki okunan ayeti tespit et.
-Bu ayetin Kuran-ı Kerim'in TAMAMINDA geçtiği BÜTÜN yerleri (veya birebir lafız benzerlerini) bul.
+GÖREVİN: Ses dosyasındaki Kuran okumasını analiz etmek ve hangi ayet olduğunu bulmak.
 
-ÖNEMLİ KURALLAR:
-1. Eğer Rahman Suresi'ndeki gibi tekrar eden bir ayetse, 31 kere geçiyorsa 31'ini de listele.
-2. Eğer tek bir yerse, tek bir obje içeren liste döndür.
-3. Çıktı formatı KESİNLİKLE sadece saf bir JSON Dizisi (Array) olmalı.
-4. Sayfa numaralarını Diyanet/Medine (604 sayfa) standardına göre ver.
+KURALLAR:
+1. Ses net değilse, gürültüden ibaretse veya Kuran okunmuyorsa:
+   KESİNLİKLE boş bir JSON dizisi döndür: []
+   ASLA "Rahman Suresi" örneğini veya uydurma bir cevap verme.
+   
+2. Eğer ayet tespit edilirse:
+   Bu ayetin Kuran'ı Kerim'deki TÜM tekrarlarını bul.
+   Sayfa numaralarını Diyanet/Medine (604 sayfa) standardına göre ver.
 
-İSTENEN JSON FORMATI:
+İSTENEN FORMAT (Sadece tespit başarılıysa):
 [
   {
-    "sure_adi": "Rahman Suresi",
-    "ayet_no": 13,
-    "sayfa_no": 531,
-    "arapca": "Arapça Metni Buraya",
-    "meal": "Türkçe Meali Buraya"
+    "sure_adi": "Fatiha Suresi",
+    "ayet_no": 1,
+    "sayfa_no": 1,
+    "arapca": "Elhamdulillahi...",
+    "meal": "Hamd alemlerin rabbine..."
   }
 ]
-SADECE JSON DÖNDÜR. YORUM YAPMA.
+
+SADECE JSON DÖNDÜR. YORUM EKLEME.
 """
 
 generation_config = {
-    "temperature": 0.0, # Sıfır hata toleransı
+    "temperature": 0.0, # Sıfır yaratıcılık, tam itaat.
     "top_p": 0.95,
     "max_output_tokens": 4000,
     "response_mime_type": "application/json",
 }
 
 model = genai.GenerativeModel(
-    model_name="gemini-2.5-flash", 
+    model_name="gemini-2.5-flash",
     generation_config=generation_config,
     system_instruction=system_instruction,
 )
@@ -64,29 +67,36 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-    return {"durum": "Hafiz AI - Veritabanısız Mod (Anlık Analiz)"}
+    return {"durum": "Hafiz AI - Limitsiz Mod Aktif"}
 
 @app.post("/analiz-et")
 async def analiz_et(file: UploadFile = File(...)):
     try:
-        # 1. Dosyayı Gemini'ye gönder
+        print(f"Dosya alındı: {file.filename}") # Loglara yaz
+        
         content = await file.read()
         
-        # Dosya tipine göre mime_type belirle (mp3, wav, m4a vs.)
-        mime_type = file.content_type or "audio/mp3" 
+        # Dosya boş mu kontrol et
+        if len(content) < 1000: # 1KB'dan küçükse ses değildir
+            return []
+
+        mime_type = "audio/mp3" # Genelleme yapıyoruz, Gemini anlar.
 
         response = model.generate_content([
-            "Bu kayıttaki ayeti bul ve tüm tekrarlarını listele.",
+            "Bu kayıttaki ayeti bul. Duyamıyorsan boş liste dön.",
             {"mime_type": mime_type, "data": content}
         ])
         
-        # 2. Gelen JSON verisini parse et ve direkt kullanıcıya dön
+        print("Gemini Cevabı:", response.text) # Loglara cevabı yaz
+
         try:
             results = json.loads(response.text)
             return results
         except json.JSONDecodeError:
-            return {"hata": "Model JSON üretmedi", "raw": response.text}
+            # Bazen JSON bozuk gelirse boş dönelim ki uygulama çökmesin
+            print("JSON Hatası oluştu")
+            return []
 
     except Exception as e:
+        print(f"Sunucu Hatası: {str(e)}")
         return {"hata": str(e)}
-    # Hafiz AI Guncellendi - Veritabanisiz Mod
