@@ -16,7 +16,7 @@ genai.configure(api_key=api_key)
 # --- SİSTEM TALİMATI (GÜNCELLENDİ) ---
 # Rahman Suresi "hallüsinasyonunu" engellemek için talimatı netleştirdik.
 system_instruction = """
-GÖREVİN: Ses dosyasındaki Kuran okumasını analiz et ve ayeti bul.
+GÖREVİN:Ses dosyasındaki Kuran okumasını analiz et ve ayeti bul.
 
 ÇOK ÖNEMLİ KURALLAR:
 1. Ses kaydını dinle. Eğer net bir Kuran tilaveti DUYAMIYORSAN (sadece gürültü, sessizlik veya konuşma varsa):
