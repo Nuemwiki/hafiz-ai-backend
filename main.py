@@ -89,3 +89,4 @@ async def analiz_et(file: UploadFile = File(...)):
 
     except Exception as e:
         return {"hata": str(e)}
+    # Hafiz AI Guncellendi - Veritabanisiz Mod
