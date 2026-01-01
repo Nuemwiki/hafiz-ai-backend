@@ -1,11 +1,10 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File
 import google.generativeai as genai
 import os
 import json
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 
-# .env yükle
 load_dotenv()
 api_key = os.getenv("GOOGLE_API_KEY")
 
@@ -14,21 +13,22 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 
-# --- SYSTEM INSTRUCTION (GÜNCELLENDİ) ---
-# Rahman suresi hatasını engellemek için kuralları sertleştirdik.
+# --- SİSTEM TALİMATI (GÜNCELLENDİ) ---
+# Rahman Suresi "hallüsinasyonunu" engellemek için talimatı netleştirdik.
 system_instruction = """
-GÖREVİN: Ses dosyasındaki Kuran okumasını analiz etmek ve hangi ayet olduğunu bulmak.
+GÖREVİN: Ses dosyasındaki Kuran okumasını analiz et ve ayeti bul.
 
-KURALLAR:
-1. Ses net değilse, gürültüden ibaretse veya Kuran okunmuyorsa:
+ÇOK ÖNEMLİ KURALLAR:
+1. Ses kaydını dinle. Eğer net bir Kuran tilaveti DUYAMIYORSAN (sadece gürültü, sessizlik veya konuşma varsa):
    KESİNLİKLE boş bir JSON dizisi döndür: []
-   ASLA "Rahman Suresi" örneğini veya uydurma bir cevap verme.
-   
-2. Eğer ayet tespit edilirse:
-   Bu ayetin Kuran'ı Kerim'deki TÜM tekrarlarını bul.
-   Sayfa numaralarını Diyanet/Medine (604 sayfa) standardına göre ver.
+   ASLA tahmin yürütme.
+   ASLA rastgele bir sure (özellikle Rahman Suresi) uydurma.
 
-İSTENEN FORMAT (Sadece tespit başarılıysa):
+2. Eğer Kuran okunduğundan eminsen:
+   Okunan ayeti ve varsa tekrar eden yerlerini tespit et.
+   Diyanet/Medine (604 sayfa) standardına göre sayfa numarasını ekle.
+
+İSTENEN FORMAT (Sadece JSON):
 [
   {
     "sure_adi": "Fatiha Suresi",
@@ -38,21 +38,15 @@ KURALLAR:
     "meal": "Hamd alemlerin rabbine..."
   }
 ]
-
-SADECE JSON DÖNDÜR. YORUM EKLEME.
 """
-
-generation_config = {
-    "temperature": 0.0, # Sıfır yaratıcılık, tam itaat.
-    "top_p": 0.95,
-    "max_output_tokens": 4000,
-    "response_mime_type": "application/json",
-}
 
 model = genai.GenerativeModel(
     model_name="gemini-2.5-flash",
-    generation_config=generation_config,
     system_instruction=system_instruction,
+    generation_config={
+        "temperature": 0.0, # Sıfır hata toleransı
+        "response_mime_type": "application/json"
+    }
 )
 
 app = FastAPI()
@@ -67,36 +61,22 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-    return {"durum": "Hafiz AI - Limitsiz Mod Aktif"}
+    return {"durum": "Hafiz AI - Akıllı Mod Aktif"}
 
 @app.post("/analiz-et")
 async def analiz_et(file: UploadFile = File(...)):
     try:
-        print(f"Dosya alındı: {file.filename}") # Loglara yaz
-        
         content = await file.read()
         
-        # Dosya boş mu kontrol et
-        if len(content) < 1000: # 1KB'dan küçükse ses değildir
-            return []
-
-        mime_type = "audio/mp3" # Genelleme yapıyoruz, Gemini anlar.
+        # Dosya türünü olduğu gibi ilet (iPhone m4a sorunu olmasın)
+        mime_type = file.content_type or "audio/m4a"
 
         response = model.generate_content([
-            "Bu kayıttaki ayeti bul. Duyamıyorsan boş liste dön.",
+            "Bu sesi analiz et. Kuran yoksa boş liste dön.",
             {"mime_type": mime_type, "data": content}
         ])
         
-        print("Gemini Cevabı:", response.text) # Loglara cevabı yaz
-
-        try:
-            results = json.loads(response.text)
-            return results
-        except json.JSONDecodeError:
-            # Bazen JSON bozuk gelirse boş dönelim ki uygulama çökmesin
-            print("JSON Hatası oluştu")
-            return []
+        return json.loads(response.text)
 
     except Exception as e:
-        print(f"Sunucu Hatası: {str(e)}")
         return {"hata": str(e)}
