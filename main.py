@@ -13,9 +13,8 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 
-# --- SİSTEM TALİMATI ---
-# Mobil uygulamanın çalışması için buraya "sayfa_no" ekledik.
-# Model senin istediğin gibi 2.5 Flash.
+# --- SİSTEM TALİMATI (MÜTEŞABİH İÇİN GÜÇLENDİRİLDİ) ---
+# Kodun yapısı aynı, sadece talimatı netleştirdik.
 system_instruction = """
 GÖREVİN: Ses dosyasındaki Kuran okumasını analiz et ve ayeti bul.
 
@@ -24,28 +23,36 @@ GÖREVİN: Ses dosyasındaki Kuran okumasını analiz et ve ayeti bul.
    KESİNLİKLE boş bir JSON dizisi döndür: []
    ASLA tahmin yürütme.
 
-2. Eğer Kuran okunduğundan eminsen:
-   Okunan ayeti ve varsa tekrar eden yerlerini tespit et.
-   Diyanet/Medine (604 sayfa) standardına göre sayfa numarasını 'sayfa_no' olarak MUTLAKA ekle. 
+2. MÜTEŞABİH VE TEKRAR KONTROLÜ:
+   - Eğer okunan ayet Kuran'da birden fazla yerde geçiyorsa (Örn: "Vellezine...", "Febi eyyi alai..." gibi), SADECE BİRİNİ DEĞİL, hepsini tespit et.
+   - Bulduğun tüm benzer ayetleri listeye ayrı ayrı ekle.
+   - Diyanet/Medine (604 sayfa) standardına göre sayfa numarasını 'sayfa_no' olarak her sonuç için MUTLAKA ekle.
 
-İSTENEN FORMAT (Sadece JSON):
+İSTENEN FORMAT (Sadece JSON Listesi):
 [
   {
-    "sure_adi": "Fatiha Suresi",
-    "ayet_no": 1,
-    "sayfa_no": 1,
-    "arapca": "Elhamdulillahi...",
-    "meal": "Hamd alemlerin rabbine..."
+    "sure_adi": "Bakara Suresi",
+    "ayet_no": 10,
+    "sayfa_no": 3,
+    "arapca": "...",
+    "meal": "..."
+  },
+  {
+    "sure_adi": "Münafıkun Suresi",
+    "ayet_no": 2,
+    "sayfa_no": 554,
+    "arapca": "...",
+    "meal": "..."
   }
 ]
 """
 
-# SENİN İSTEDİĞİN MODEL (KOTA DÜZELDİYSE BU ÇALIŞIR)
+# SENİN İSTEDİĞİN MODEL (AYNEN KORUNDU)
 model = genai.GenerativeModel(
     model_name="gemini-2.5-flash",
     system_instruction=system_instruction,
     generation_config={
-        "temperature": 0.0, # Sıfır hata toleransı
+        "temperature": 0.0, # Sıfır hata toleransı (Aynen korundu)
         "response_mime_type": "application/json"
     }
 )
@@ -62,7 +69,7 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-    return {"durum": "Hafiz AI - 2.5 Flash Aktif"}
+    return {"durum": "Hafiz AI - 2.5 Flash Mutesabih Modu"}
 
 @app.post("/analiz-et")
 async def analiz_et(file: UploadFile = File(...)):
@@ -72,8 +79,9 @@ async def analiz_et(file: UploadFile = File(...)):
         # Dosya türünü olduğu gibi ilet
         mime_type = file.content_type or "audio/m4a"
 
+        # PROMPT GÜNCELLEMESİ: Buraya da "hepsini listele" uyarısını ekledik.
         response = model.generate_content([
-            "Bu sesi analiz et. Kuran yoksa boş liste dön.",
+            "Bu sesi analiz et. Kuran yoksa boş liste dön. Okunan ayet müteşabih ise (birden fazla yerde geçiyorsa) hepsini listele.",
             {"mime_type": mime_type, "data": content}
         ])
         
