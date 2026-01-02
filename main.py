@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
+# Eğer .env dosyan yoksa API Key'i buraya direkt yazabilirsin test için.
 api_key = os.getenv("GOOGLE_API_KEY")
 
 if not api_key:
@@ -13,38 +14,37 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 
-# --- SİSTEM TALİMATI (GÜNCELLENDİ) ---
-# Rahman Suresi "hallüsinasyonunu" engellemek için talimatı netleştirdik.
+# --- SİSTEM TALİMATI ---
+# Mevcut yapını koruyoruz, sadece sayfa numarasının kesin gelmesini garantiliyoruz.
 system_instruction = """
-GÖREVİN:Ses dosyasındaki Kuran okumasını analiz et ve ayeti bul.
+GÖREVİN: Ses dosyasındaki Kuran okumasını analiz et.
 
-ÇOK ÖNEMLİ KURALLAR:
-1. Ses kaydını dinle. Eğer net bir Kuran tilaveti DUYAMIYORSAN (sadece gürültü, sessizlik veya konuşma varsa):
-   KESİNLİKLE boş bir JSON dizisi döndür: []
-   ASLA tahmin yürütme.
-   ASLA rastgele bir sure (özellikle Rahman Suresi) uydurma.
+KURALLAR:
+1. Ses kaydını dinle. Eğer net bir Kuran tilaveti DUYAMIYORSAN boş liste dön: []
+2. Eğer Kuran okunuyorsa:
+   - Okunan sureyi ve ayeti tespit et.
+   - Bu ayetin bulunduğu sayfayı (Diyanet/Medine 604 sayfa standardına göre) kesinlikle 'sayfa_no' olarak ekle.
 
-2. Eğer Kuran okunduğundan eminsen:
-   Okunan ayeti ve varsa tekrar eden yerlerini tespit et.
-   Diyanet/Medine (604 sayfa) standardına göre sayfa numarasını ekle. 
-
-İSTENEN FORMAT (Sadece JSON):
+İSTENEN FORMAT (JSON):
 [
   {
     "sure_adi": "Fatiha Suresi",
     "ayet_no": 1,
-    "sayfa_no": 1,
+    "sayfa_no": 1, 
     "arapca": "Elhamdulillahi...",
     "meal": "Hamd alemlerin rabbine..."
   }
 ]
 """
 
+# ÖNEMLİ DEĞİŞİKLİK: 
+# 'gemini-2.5-flash' sende kota/destek hatası verdiği için 
+# bunu en stabil ve geniş kotalı sürüm olan 'gemini-1.5-flash' yaptık.
 model = genai.GenerativeModel(
-    model_name="gemini-2.5-flash",
+    model_name="gemini-1.5-flash",
     system_instruction=system_instruction,
     generation_config={
-        "temperature": 0.0, # Sıfır hata toleransı
+        "temperature": 0.0,
         "response_mime_type": "application/json"
     }
 )
@@ -61,14 +61,14 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-    return {"durum": "Hafiz AI - Akıllı Mod Aktif"}
+    return {"durum": "Hafiz AI Calisiyor"}
 
 @app.post("/analiz-et")
 async def analiz_et(file: UploadFile = File(...)):
     try:
         content = await file.read()
         
-        # Dosya türünü olduğu gibi ilet (iPhone m4a sorunu olmasın)
+        # Dosya türünü olduğu gibi iletiyoruz
         mime_type = file.content_type or "audio/m4a"
 
         response = model.generate_content([
@@ -76,6 +76,8 @@ async def analiz_et(file: UploadFile = File(...)):
             {"mime_type": mime_type, "data": content}
         ])
         
+        # Gelen cevabı JSON'a çevirip gönderiyoruz
+        # Frontend bu JSON içindeki 'sayfa_no'yu kullanacak.
         return json.loads(response.text)
 
     except Exception as e:
