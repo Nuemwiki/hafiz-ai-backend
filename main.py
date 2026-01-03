@@ -13,9 +13,9 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 
-# --- SİSTEM TALİMATI (TÜRKİYE AYARI) ---
+# --- SİSTEM TALİMATI (TÜRKİYE + SATIR TAHMİNİ) ---
 # Kodun yapısını bozmadım. 
-# Sadece "Medine" yazan yeri "Türkiye Hafızlık (Ayfa)" olarak düzelttim.
+# Sadece "Satır Numarası Tahmini" özelliğini ekledim.
 system_instruction = """
 GÖREVİN: Ses dosyasındaki Kuran okumasını analiz et ve ayeti bul.
 
@@ -24,12 +24,17 @@ GÖREVİN: Ses dosyasındaki Kuran okumasını analiz et ve ayeti bul.
    KESİNLİKLE boş bir JSON dizisi döndür: []
    ASLA tahmin yürütme.
 
-2. SAYFA STANDARDI (TÜRKİYE):
+2. SAYFA STANDARDI (TÜRKİYE - AYFA):
    - Sayfa numaralarını verirken KESİNLİKLE "Türkiye Hafızlık Düzeni (Ayfa/Berkenar - 604 Sayfa)" baskısını esas al.
    - Medine Mushafı'nı DEĞİL, Türkiye'deki sarı sayfa düzenini kullan.
 
-3. MÜTEŞABİH VE TEKRAR KONTROLÜ:
-   - Eğer okunan ayet Kuran'da birden fazla yerde geçiyorsa (Örn: "Vellezine...", "Febi eyyi alai..." gibi), SADECE BİRİNİ DEĞİL, hepsini tespit et.
+3. SATIR TAHMİNİ (YENİ GÖREV):
+   - Bulduğun ayetin, standart 15 satırlı Ayfa sayfasında MUHTEMELEN hangi satırda olduğunu tahmin et (1 ile 15 arası).
+   - Kesin bilemezsen yaklaşık bir aralık veya tek sayı ver (Örn: "2", "7-8", "15" gibi).
+   - Bunu "satir_no" alanına yaz.
+
+4. MÜTEŞABİH VE TEKRAR KONTROLÜ:
+   - Eğer okunan ayet Kuran'da birden fazla yerde geçiyorsa, SADECE BİRİNİ DEĞİL, hepsini tespit et.
    - Bulduğun tüm benzer ayetleri listeye ayrı ayrı ekle.
    - Sayfa numarasını 'sayfa_no' olarak her sonuç için MUTLAKA ekle.
 
@@ -39,6 +44,7 @@ GÖREVİN: Ses dosyasındaki Kuran okumasını analiz et ve ayeti bul.
     "sure_adi": "Bakara Suresi",
     "ayet_no": 10,
     "sayfa_no": 3,
+    "satir_no": "12",
     "arapca": "...",
     "meal": "..."
   }
@@ -67,7 +73,7 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-    return {"durum": "Hafiz AI - 2.5 Flash Türkiye Modu"}
+    return {"durum": "Hafiz AI - 2.5 Flash Türkiye + Satır Modu"}
 
 @app.post("/analiz-et")
 async def analiz_et(file: UploadFile = File(...)):
@@ -77,9 +83,9 @@ async def analiz_et(file: UploadFile = File(...)):
         # Dosya türünü olduğu gibi ilet
         mime_type = file.content_type or "audio/m4a"
 
-        # PROMPT GÜNCELLEMESİ: Buraya da Türkiye uyarısını ekledim.
+        # PROMPT GÜNCELLEMESİ: Satır tahmini isteğini buraya da ekledim.
         response = model.generate_content([
-            "Bu sesi analiz et. Kuran yoksa boş liste dön. Okunan ayet müteşabih ise (birden fazla yerde geçiyorsa) hepsini listele. Sayfaları Türkiye (Ayfa) düzenine göre ver.",
+            "Bu sesi analiz et. Kuran yoksa boş liste dön. Okunan ayet müteşabih ise hepsini listele. Sayfa ve SATIR NUMARASINI (tahmini) Türkiye (Ayfa) düzenine göre ver.",
             {"mime_type": mime_type, "data": content}
         ])
         
