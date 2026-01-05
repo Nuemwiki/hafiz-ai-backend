@@ -15,51 +15,25 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 
-# --- HARİTA (AYNEN KORUNDU) ---
-SURE_SAYFA_MAP = {
-    1: 1, 2: 2, 3: 50, 4: 77, 5: 106, 6: 128, 7: 151, 8: 177, 9: 187, 10: 208,
-    11: 221, 12: 235, 13: 249, 14: 255, 15: 262, 16: 267, 17: 282, 18: 293, 19: 305, 20: 312,
-    21: 322, 22: 332, 23: 342, 24: 350, 25: 359, 26: 367, 27: 377, 28: 385, 29: 396, 30: 404,
-    31: 411, 32: 415, 33: 418, 34: 428, 35: 434, 36: 440, 37: 446, 38: 453, 39: 458, 40: 467,
-    41: 477, 42: 483, 43: 489, 44: 496, 45: 499, 46: 502, 47: 507, 48: 511, 49: 515, 50: 518,
-    51: 520, 52: 523, 53: 526, 54: 528, 55: 531, 56: 534, 57: 537, 58: 542, 59: 545, 60: 549,
-    61: 551, 62: 553, 63: 554, 64: 556, 65: 558, 66: 560, 67: 562, 68: 564, 69: 566, 70: 568,
-    71: 570, 72: 572, 73: 574, 74: 575, 75: 577, 76: 578, 77: 580, 78: 582, 79: 583, 80: 585,
-    81: 586, 82: 587, 83: 587, 84: 589, 85: 590, 86: 591, 87: 591, 88: 592, 89: 593, 90: 594,
-    91: 595, 92: 596, 93: 596, 94: 597, 95: 597, 96: 598, 97: 599, 98: 599, 99: 600, 100: 600,
-    101: 601, 102: 601, 103: 602, 104: 602, 105: 602, 106: 603, 107: 603, 108: 603, 109: 604, 110: 604,
-    111: 604, 112: 605, 113: 605, 114: 605
-}
-
 # --- SİSTEM TALİMATI ---
 system_instruction = """
 GÖREVİN: Ses kaydındaki Kuran ayetlerini tespit et.
 
-KURALLAR VE YASAKLAR:
-1. "KOPYA ÇEKMEK" YASAK: Sana verilen örnek JSON formatındaki verileri sakın çıktı olarak verme. Sadece duyduğun sesi analiz et.
-2. SALLAMAK YASAK: Eğer seste net bir Arapça Kuran tilaveti yoksa, sadece gürültü veya anlaşılmaz sesler varsa, KESİNLİKLE boş liste [] döndür.
-3. KELİME ANALİZİ: "Ya Eyyühel İnsan" ve "Ya Eyyühennas" gibi benzer kelimelere dikkat et.
+KURALLAR:
+1. SALLAMAK YASAK: Emin değilsen boş liste [] dön.
+2. MÜTEŞABİH KONTROLÜ: Okunan ayet birden fazla yerde geçiyorsa hepsini listele.
+3. KELİME ANALİZİ: "İnsan/Nas", "Halak/Felak" gibi ayrımlara dikkat et.
 
-4. MÜTEŞABİH (BENZER) AYETLER - ÇOK ÖNEMLİ:
-   - Okunan kısım Kuran'da birden fazla surede geçiyorsa, SADECE BİRİNİ DEĞİL, HEPSİNİ LİSTELE.
-
-ÇIKTI FORMATI (JSON LİSTESİ):
+ÇIKTI FORMATI (JSON):
 [
-  {
-    "sure_no": 0, 
-    "ayet_no": 0,
-    "sure_adi": "Surenin Adı",
-    "satir_no": "Tahmini Satır (1-15)",
-    "arapca": "Ayetin Metni",
-    "meal": "Meali"
-  }
+  { "sure_no": 0, "ayet_no": 0, "sure_adi": "...", "arapca": "...", "meal": "..." }
 ]
 """
 
-# --- CACHE ---
+# --- MODEL (2.0 Flash - Native Audio) ---
 try:
     cached_content = genai.caching.CachedContent.create(
-        model="gemini-2.0-flash-exp", # 2.0 Flash (Native Audio)
+        model="gemini-2.0-flash-exp",
         system_instruction=system_instruction,
         ttl=timedelta(hours=1),
     )
@@ -73,6 +47,48 @@ except Exception:
         system_instruction=system_instruction,
         generation_config={"temperature": 0.0, "response_mime_type": "application/json"}
     )
+
+# --- SAYFA HARİTALARI (KESİN ÇÖZÜM) ---
+# Buradaki listeler, o surenin sayfalarının BAŞLANGIÇ ayetleridir.
+# Örn: Bakara 3. sayfa 6. ayetle başlar. 4. sayfa 17. ayetle başlar.
+OZEL_SAYFA_HARITASI = {
+    # BAKARA (Sayfa 2'den 49'a kadar)
+    2: [
+        1, 6, 17, 25, 30, 38, 49, 58, 62, 70, 77, 84, 89, 94, 102, 106, 113, 120, 127, 135,
+        142, 146, 154, 164, 170, 177, 182, 187, 191, 197, 203, 211, 216, 220, 225, 231, 234,
+        238, 246, 249, 253, 257, 259, 263, 265, 270, 275, 282, 283, 286
+    ],
+    # AL-İ İMRAN (Sayfa 50'den 76'ya kadar)
+    3: [
+        1, 10, 16, 23, 30, 38, 46, 53, 62, 71, 78, 84, 92, 101, 109, 116, 122, 133, 141, 149,
+        154, 158, 166, 174, 181, 190, 200
+    ],
+    # NİSA (Sayfa 77'den 106'ya kadar)
+    4: [
+        1, 7, 12, 15, 20, 24, 27, 34, 38, 45, 52, 60, 66, 75, 80, 87, 92, 95, 102, 106, 114,
+        117, 122, 128, 135, 141, 148, 155, 163, 171
+    ],
+    # MAİDE (Sayfa 106'dan 127'ye kadar)
+    5: [
+        1, 6, 10, 14, 18, 24, 32, 37, 42, 46, 51, 58, 65, 71, 78, 83, 90, 96, 104, 109, 114
+    ]
+}
+
+# Diğer sureler için Başlangıç Sayfası
+SURE_BASLANGIC_SAYFASI = {
+    1: 1, 2: 2, 3: 50, 4: 77, 5: 106, 6: 128, 7: 151, 8: 177, 9: 187, 10: 208,
+    11: 221, 12: 235, 13: 249, 14: 255, 15: 262, 16: 267, 17: 282, 18: 293, 19: 305, 20: 312,
+    21: 322, 22: 332, 23: 342, 24: 350, 25: 359, 26: 367, 27: 377, 28: 385, 29: 396, 30: 404,
+    31: 411, 32: 415, 33: 418, 34: 428, 35: 434, 36: 440, 37: 446, 38: 453, 39: 458, 40: 467,
+    41: 477, 42: 483, 43: 489, 44: 496, 45: 499, 46: 502, 47: 507, 48: 511, 49: 515, 50: 518,
+    51: 520, 52: 523, 53: 526, 54: 528, 55: 531, 56: 534, 57: 537, 58: 542, 59: 545, 60: 549,
+    61: 551, 62: 553, 63: 554, 64: 556, 65: 558, 66: 560, 67: 562, 68: 564, 69: 566, 70: 568,
+    71: 570, 72: 572, 73: 574, 74: 575, 75: 577, 76: 578, 77: 580, 78: 582, 79: 583, 80: 585,
+    81: 586, 82: 587, 83: 587, 84: 589, 85: 590, 86: 591, 87: 591, 88: 592, 89: 593, 90: 594,
+    91: 595, 92: 595, 93: 596, 94: 596, 95: 597, 96: 597, 97: 598, 98: 598, 99: 599, 100: 599,
+    101: 600, 102: 600, 103: 601, 104: 601, 105: 601, 106: 602, 107: 602, 108: 602, 109: 603, 110: 603,
+    111: 603, 112: 604, 113: 604, 114: 604
+}
 
 # --- LİMİT SİSTEMİ ---
 kullanici_limitler = defaultdict(lambda: {"tarih": None, "kullanim": 0, "premium": False})
@@ -105,11 +121,12 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-    return {"durum": "Hafiz AI - Sayfa Hesaplama Duzeltildi"}
+    return {"durum": "Hafiz AI - Ozel Harita Modu"}
 
 @app.post("/analiz-et")
 async def analiz_et(file: UploadFile = File(...), x_user_id: str = Header(None, alias="X-User-ID"), x_premium: str = Header("false", alias="X-Premium")):
     try:
+        # Limit Kontrolü
         kullanici_id = x_user_id or "anonim"
         is_premium = x_premium.lower() == "true"
         izin_var, limit_bilgisi = limit_kontrol(kullanici_id, is_premium)
@@ -119,48 +136,53 @@ async def analiz_et(file: UploadFile = File(...), x_user_id: str = Header(None, 
         mime_type = file.content_type or "audio/m4a"
 
         response = model.generate_content([
-            "Bu sesi dinle. Arapça kelimeleri tespit et. Müteşabihleri bul. Kuran değilse boş dön.",
+            "Bu sesi dinle. Arapça kelimeleri ve ayetleri tespit et. Müteşabih (benzer) ayetler varsa hepsini listele.",
             {"mime_type": mime_type, "data": content}
         ])
         
         sonuclar = json.loads(response.text)
 
-        # --- YENİ: GELİŞMİŞ SAYFA HESAPLAMA MOTORU ---
+        # --- SAYFA HESAPLAMA MOTORU (DÜZELTİLDİ) ---
         final_sonuclar = []
         for item in sonuclar:
             sure_no = item.get("sure_no")
             ayet_no = item.get("ayet_no")
             
-            if sure_no == 0 or sure_no is None: continue
+            if not sure_no or sure_no == 0: continue
 
-            if sure_no in SURE_SAYFA_MAP:
-                baslangic_sayfasi = SURE_SAYFA_MAP[sure_no]
+            hesaplanan_sayfa = 1
+
+            # 1. YÖNTEM: ÖZEL HARİTA (Bakara, Ali İmran vs. için kesin çözüm)
+            if sure_no in OZEL_SAYFA_HARITASI:
+                baslangic_sayfasi = SURE_BASLANGIC_SAYFASI[sure_no]
+                ayet_listesi = OZEL_SAYFA_HARITASI[sure_no]
+                
+                sayfa_farki = 0
+                for index, baslangic_ayeti in enumerate(ayet_listesi):
+                    if ayet_no >= baslangic_ayeti:
+                        sayfa_farki = index # Hangi aralıkta olduğunu bulur
+                    else:
+                        break # Aradığımız ayeti geçtik, döngüden çık
+                
+                hesaplanan_sayfa = baslangic_sayfasi + sayfa_farki
+
+            # 2. YÖNTEM: MATEMATİKSEL TAHMİN (Diğer sureler için)
+            elif sure_no in SURE_BASLANGIC_SAYFASI:
+                baslangic_sayfasi = SURE_BASLANGIC_SAYFASI[sure_no]
                 ek_sayfa = 0
                 
-                # --- AYET YOĞUNLUĞUNA GÖRE HESAP ---
-                if sure_no == 2: # BAKARA: Çok uzun ayetler (Ortalama 6-7 ayet/sayfa)
-                    ek_sayfa = int((ayet_no - 1) / 7.0)
-                
-                elif sure_no in [3, 4, 5]: # ALİ İMRAN, NİSA, MAİDE (Ortalama 8-9 ayet/sayfa)
-                    ek_sayfa = int((ayet_no - 1) / 9.0)
-                
-                elif sure_no in [6, 7, 8, 9]: # ENAM, ARAF... (Ortalama 10 ayet/sayfa)
-                    ek_sayfa = int((ayet_no - 1) / 10.0)
-                
-                elif sure_no >= 78: # NEBE'DEN SONRA: Çok kısa ayetler, sayfa değişimi yavaş
-                    # Burada ayet no'ya göre değil, sayfa başlarına göre manuel kaydırma daha iyi ama
-                    # basit bir oran (30 ayet/sayfa gibi) yaklaşık doğru verir.
-                    if sure_no >= 90: ek_sayfa = 0 # Genelde tek sayfa
+                if sure_no >= 78: # Kısa sureler (Nebe sonrası)
+                    if sure_no >= 90: ek_sayfa = 0
                     else: ek_sayfa = int((ayet_no - 1) / 25.0) 
-                
-                else: # GENEL ORTALAMA (13-14 ayet/sayfa)
+                else: # Standart sureler (13-14 ayet/sayfa)
                     ek_sayfa = int((ayet_no - 1) / 13.5)
                 
-                hesaplanan_sayfa = min(604, int(baslangic_sayfasi + ek_sayfa))
-                item["sayfa_no"] = hesaplanan_sayfa
-            else:
-                item["sayfa_no"] = 1
-
+                hesaplanan_sayfa = baslangic_sayfasi + ek_sayfa
+            
+            # Sınırlandırma (Max 604)
+            hesaplanan_sayfa = min(604, hesaplanan_sayfa)
+            
+            item["sayfa_no"] = hesaplanan_sayfa
             final_sonuclar.append(item)
         
         return {"sonuclar": final_sonuclar, "limit_bilgisi": limit_bilgisi}
