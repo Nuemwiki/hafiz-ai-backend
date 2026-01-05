@@ -21,7 +21,7 @@ GÖREVİN: Ses kaydındaki Kuran ayetlerini tespit et.
 
 KURALLAR:
 1. SALLAMAK YASAK: Emin değilsen boş liste [] dön.
-2. MÜTEŞABİH KONTROLÜ: Okunan ayet birden fazla yerde geçiyorsa hepsini listele.
+2. MÜTEŞABİH KONTROLÜ: Okunan ayet birden fazla yerde geçiyorsa KESİNLİKLE DİKKAT ET VE HEPSİNİ LİSTELE.
 3. KELİME ANALİZİ: "İnsan/Nas", "Halak/Felak" gibi ayrımlara dikkat et.
 
 ÇIKTI FORMATI (JSON):
@@ -56,21 +56,21 @@ OZEL_SAYFA_HARITASI = {
     2: [
         1, 6, 17, 25, 30, 38, 49, 58, 62, 70, 77, 84, 89, 94, 102, 106, 113, 120, 127, 135,
         142, 146, 154, 164, 170, 177, 182, 187, 191, 197, 203, 211, 216, 220, 225, 231, 234,
-        238, 246, 249, 253, 257, 259, 263, 265, 270, 275, 282, 283, 286
+        238, 246, 249, 253, 257, 259, 263, 265, 270, 275, 282, 283
     ],
     # AL-İ İMRAN (Sayfa 50'den 76'ya kadar)
     3: [
         1, 10, 16, 23, 30, 38, 46, 53, 62, 71, 78, 84, 92, 101, 109, 116, 122, 133, 141, 149,
-        154, 158, 166, 174, 181, 190, 200
+        154, 158, 166, 174, 181, 187, 
     ],
     # NİSA (Sayfa 77'den 106'ya kadar)
     4: [
         1, 7, 12, 15, 20, 24, 27, 34, 38, 45, 52, 60, 66, 75, 80, 87, 92, 95, 102, 106, 114,
-        117, 122, 128, 135, 141, 148, 155, 163, 171
+        122, 128, 135, 141, 148, 155, 163, 171, 186
     ],
     # MAİDE (Sayfa 106'dan 127'ye kadar)
     5: [
-        1, 6, 10, 14, 18, 24, 32, 37, 42, 46, 51, 58, 65, 71, 78, 83, 90, 96, 104, 109, 114
+        1, 3, 6, 10, 14, 18, 24, 32, 37, 42, 46, 51, 58, 65, 71, 77, 83, 90, 96, 104, 109, 114
     ]
 }
 
