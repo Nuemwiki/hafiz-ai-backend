@@ -31,18 +31,17 @@ SURE_SAYFA_MAP = {
     111: 604, 112: 605, 113: 605, 114: 605
 }
 
-# --- SİSTEM TALİMATI (AYNEN KORUNDU) ---
+# --- SİSTEM TALİMATI ---
 system_instruction = """
 GÖREVİN: Ses kaydındaki Kuran ayetlerini tespit et.
 
 KURALLAR VE YASAKLAR:
-1. "KOPYA ÇEKMEK" YASAK: Sana verilen örnek JSON formatındaki verileri (0, Örnek Sure vb.) sakın çıktı olarak verme. Sadece duyduğun sesi analiz et.
-2. SALLAMAK YASAK: Eğer seste net bir Arapça Kuran tilaveti yoksa, sadece gürültü veya anlaşılmaz sesler varsa, KESİNLİKLE boş liste [] döndür. Rastgele bir ayet atma.
-3. KELİME ANALİZİ: "Ya Eyyühel İnsan" ve "Ya Eyyühennas" gibi benzer kelimelere dikkat et. Duyduğun kelimeler tam olarak hangi ayette geçiyorsa onu bul.
+1. "KOPYA ÇEKMEK" YASAK: Sana verilen örnek JSON formatındaki verileri sakın çıktı olarak verme. Sadece duyduğun sesi analiz et.
+2. SALLAMAK YASAK: Eğer seste net bir Arapça Kuran tilaveti yoksa, sadece gürültü veya anlaşılmaz sesler varsa, KESİNLİKLE boş liste [] döndür.
+3. KELİME ANALİZİ: "Ya Eyyühel İnsan" ve "Ya Eyyühennas" gibi benzer kelimelere dikkat et.
 
 4. MÜTEŞABİH (BENZER) AYETLER - ÇOK ÖNEMLİ:
    - Okunan kısım Kuran'da birden fazla surede geçiyorsa, SADECE BİRİNİ DEĞİL, HEPSİNİ LİSTELE.
-   - Örn: "Veylül lil müsallin" hem Maun'da hem başka yerde benzer geçebilir. Hepsini ver.
 
 ÇIKTI FORMATI (JSON LİSTESİ):
 [
@@ -57,81 +56,42 @@ KURALLAR VE YASAKLAR:
 ]
 """
 
-# --- YENİ: CONTEXT CACHING ---
+# --- CACHE ---
 try:
     cached_content = genai.caching.CachedContent.create(
-        model="gemini-2.5-flash",
+        model="gemini-2.0-flash-exp", # 2.0 Flash (Native Audio)
         system_instruction=system_instruction,
-        ttl=timedelta(hours=1),  # 1 saat cache'te kalır
+        ttl=timedelta(hours=1),
     )
-    print(f"✅ Cache oluşturuldu: {cached_content.name}")
-    
     model = genai.GenerativeModel.from_cached_content(
         cached_content=cached_content,
-        generation_config={
-            "temperature": 0.0, 
-            "response_mime_type": "application/json"
-        }
+        generation_config={"temperature": 0.0, "response_mime_type": "application/json"}
     )
-except Exception as e:
-    print(f"⚠️ Cache oluşturulamadı, normal model kullanılıyor: {e}")
+except Exception:
     model = genai.GenerativeModel(
-        model_name="gemini-2.5-flash", 
+        model_name="gemini-2.0-flash-exp", 
         system_instruction=system_instruction,
-        generation_config={
-            "temperature": 0.0, 
-            "response_mime_type": "application/json"
-        }
+        generation_config={"temperature": 0.0, "response_mime_type": "application/json"}
     )
 
-# --- YENİ: LİMİT SİSTEMİ ---
+# --- LİMİT SİSTEMİ ---
 kullanici_limitler = defaultdict(lambda: {"tarih": None, "kullanim": 0, "premium": False})
-GUNLUK_LIMIT_UCRETSIZ = 3  # 5'ten 3'e düşürüldü
-
-def temizle_eski_kayitlar():
-    """Eski tarihlerin verilerini temizle"""
-    bugun = datetime.now().date()
-    silinecekler = [k for k, v in kullanici_limitler.items() 
-                    if v.get("tarih") != bugun]
-    for k in silinecekler:
-        del kullanici_limitler[k]
+GUNLUK_LIMIT_UCRETSIZ = 3
 
 def limit_kontrol(kullanici_id: str, is_premium: bool = False):
-    """Kullanıcının limitini kontrol et"""
-    temizle_eski_kayitlar()
     bugun = datetime.now().date()
-    
     kayit = kullanici_limitler[kullanici_id]
-    
-    # Tarih değiştiyse sıfırla
     if kayit["tarih"] != bugun:
         kayit["tarih"] = bugun
         kayit["kullanim"] = 0
         kayit["premium"] = is_premium
     
-    # Premium kullanıcılar sınırsız
-    if is_premium or kayit["premium"]:
-        return True, None
-    
-    # Limit kontrolü
+    if is_premium or kayit["premium"]: return True, None
     if kayit["kullanim"] >= GUNLUK_LIMIT_UCRETSIZ:
-        kalan = 0
-        return False, {
-            "limit_doldu": True,
-            "kalan": kalan,
-            "limit": GUNLUK_LIMIT_UCRETSIZ,
-            "mesaj": "Günlük limitiniz doldu. Video izleyerek devam edebilirsiniz."
-        }
+        return False, {"limit_doldu": True, "kalan": 0, "limit": GUNLUK_LIMIT_UCRETSIZ}
     
-    # Kullanımı artır
     kayit["kullanim"] += 1
-    kalan = GUNLUK_LIMIT_UCRETSIZ - kayit["kullanim"]
-    
-    return True, {
-        "limit_doldu": False,
-        "kalan": kalan,
-        "limit": GUNLUK_LIMIT_UCRETSIZ
-    }
+    return True, {"limit_doldu": False, "kalan": GUNLUK_LIMIT_UCRETSIZ - kayit["kullanim"], "limit": GUNLUK_LIMIT_UCRETSIZ}
 
 app = FastAPI()
 
@@ -145,72 +105,56 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-    return {
-        "durum": "Hafiz AI - Context Caching + Limit Sistemi",
-        "cache_aktif": True,
-        "gunluk_limit": GUNLUK_LIMIT_UCRETSIZ
-    }
+    return {"durum": "Hafiz AI - Sayfa Hesaplama Duzeltildi"}
 
 @app.post("/analiz-et")
-async def analiz_et(
-    file: UploadFile = File(...),
-    x_user_id: str = Header(None, alias="X-User-ID"),
-    x_premium: str = Header("false", alias="X-Premium")
-):
+async def analiz_et(file: UploadFile = File(...), x_user_id: str = Header(None, alias="X-User-ID"), x_premium: str = Header("false", alias="X-Premium")):
     try:
-        # Kullanıcı ID kontrolü
         kullanici_id = x_user_id or "anonim"
         is_premium = x_premium.lower() == "true"
-        
-        # Limit kontrolü
         izin_var, limit_bilgisi = limit_kontrol(kullanici_id, is_premium)
+        if not izin_var: raise HTTPException(status_code=429, detail=limit_bilgisi)
         
-        if not izin_var:
-            raise HTTPException(status_code=429, detail=limit_bilgisi)
-        
-        # Ses dosyasını oku
         content = await file.read()
         mime_type = file.content_type or "audio/m4a"
 
-        # PROMPT (Aynen korundu)
-        prompt = """
-        Bu sesi dinle. 
-        1. Duyduğun Arapça kelimeleri tam olarak tespit et.
-        2. Bu kelimelerin geçtiği TÜM sure ve ayetleri bul (Müteşabih kontrolü yap).
-        3. Eğer seste Kuran okunmuyorsa boş liste [] dön. ASLA tahmin yürütme.
-        """
-
         response = model.generate_content([
-            prompt,
+            "Bu sesi dinle. Arapça kelimeleri tespit et. Müteşabihleri bul. Kuran değilse boş dön.",
             {"mime_type": mime_type, "data": content}
         ])
         
         sonuclar = json.loads(response.text)
 
-        # --- YENİ: DAHA DOĞRU SAYFA HESAPLAMA ---
+        # --- YENİ: GELİŞMİŞ SAYFA HESAPLAMA MOTORU ---
         final_sonuclar = []
         for item in sonuclar:
             sure_no = item.get("sure_no")
             ayet_no = item.get("ayet_no")
             
-            if sure_no == 0 or sure_no is None:
-                continue
+            if sure_no == 0 or sure_no is None: continue
 
-            if sure_no and sure_no in SURE_SAYFA_MAP:
+            if sure_no in SURE_SAYFA_MAP:
                 baslangic_sayfasi = SURE_SAYFA_MAP[sure_no]
+                ek_sayfa = 0
                 
-                # Daha akıllı sayfa hesaplama
-                # Her sayfada ortalama 15 satır var
-                # Kısa sureler için daha hassas hesaplama
-                if sure_no >= 78:  # Kısa sureler (Nebe'den sonra)
-                    ek_sayfa = 0  # Genelde aynı sayfada kalır
-                elif ayet_no <= 7:
-                    ek_sayfa = 0  # İlk ayetler başlangıç sayfasında
-                elif ayet_no <= 20:
-                    ek_sayfa = 1  # 8-20 arası ayetler +1 sayfa
-                else:
-                    # Uzun sureler için orantılı hesaplama
-                    ek_sayfa = int((ayet_no - 1) / 13)
+                # --- AYET YOĞUNLUĞUNA GÖRE HESAP ---
+                if sure_no == 2: # BAKARA: Çok uzun ayetler (Ortalama 6-7 ayet/sayfa)
+                    ek_sayfa = int((ayet_no - 1) / 7.0)
+                
+                elif sure_no in [3, 4, 5]: # ALİ İMRAN, NİSA, MAİDE (Ortalama 8-9 ayet/sayfa)
+                    ek_sayfa = int((ayet_no - 1) / 9.0)
+                
+                elif sure_no in [6, 7, 8, 9]: # ENAM, ARAF... (Ortalama 10 ayet/sayfa)
+                    ek_sayfa = int((ayet_no - 1) / 10.0)
+                
+                elif sure_no >= 78: # NEBE'DEN SONRA: Çok kısa ayetler, sayfa değişimi yavaş
+                    # Burada ayet no'ya göre değil, sayfa başlarına göre manuel kaydırma daha iyi ama
+                    # basit bir oran (30 ayet/sayfa gibi) yaklaşık doğru verir.
+                    if sure_no >= 90: ek_sayfa = 0 # Genelde tek sayfa
+                    else: ek_sayfa = int((ayet_no - 1) / 25.0) 
+                
+                else: # GENEL ORTALAMA (13-14 ayet/sayfa)
+                    ek_sayfa = int((ayet_no - 1) / 13.5)
                 
                 hesaplanan_sayfa = min(604, int(baslangic_sayfasi + ek_sayfa))
                 item["sayfa_no"] = hesaplanan_sayfa
@@ -219,67 +163,27 @@ async def analiz_et(
 
             final_sonuclar.append(item)
         
-        # Limit bilgisini sonuçla birlikte gönder
-        return {
-            "sonuclar": final_sonuclar,
-            "limit_bilgisi": limit_bilgisi
-        }
+        return {"sonuclar": final_sonuclar, "limit_bilgisi": limit_bilgisi}
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        return {"hata": str(e)}
+    except HTTPException: raise
+    except Exception as e: return {"hata": str(e)}
 
 @app.post("/video-izlendi")
 async def video_izlendi(x_user_id: str = Header(None, alias="X-User-ID")):
-    """Video izlendiğinde +1 hak ver"""
     kullanici_id = x_user_id or "anonim"
     bugun = datetime.now().date()
-    
     kayit = kullanici_limitler[kullanici_id]
-    
     if kayit["tarih"] != bugun:
         kayit["tarih"] = bugun
         kayit["kullanim"] = 0
-    
-    # Limiti azalt (yani hak ver)
-    if kayit["kullanim"] > 0:
-        kayit["kullanim"] -= 1
-    
-    kalan = GUNLUK_LIMIT_UCRETSIZ - kayit["kullanim"]
-    
-    return {
-        "basarili": True,
-        "mesaj": "Video izleme hakkınız eklendi!",
-        "kalan": kalan,
-        "limit": GUNLUK_LIMIT_UCRETSIZ
-    }
+    if kayit["kullanim"] > 0: kayit["kullanim"] -= 1
+    return {"basarili": True, "kalan": GUNLUK_LIMIT_UCRETSIZ - kayit["kullanim"]}
 
 @app.get("/limit-durumu")
 async def limit_durumu(x_user_id: str = Header(None, alias="X-User-ID")):
-    """Kullanıcının mevcut limit durumunu sorgula"""
     kullanici_id = x_user_id or "anonim"
     bugun = datetime.now().date()
-    
     kayit = kullanici_limitler[kullanici_id]
-    
-    if kayit["tarih"] != bugun:
-        kalan = GUNLUK_LIMIT_UCRETSIZ
-    else:
-        kalan = max(0, GUNLUK_LIMIT_UCRETSIZ - kayit["kullanim"])
-    
-    return {
-        "kalan": kalan,
-        "limit": GUNLUK_LIMIT_UCRETSIZ,
-        "premium": kayit.get("premium", False)
-    }
-
-# Uygulama kapanırken cache'i temizle
-@app.on_event("shutdown")
-def cleanup():
-    try:
-        if 'cached_content' in globals():
-            cached_content.delete()
-            print("✅ Cache temizlendi")
-    except:
-        pass
+    if kayit["tarih"] != bugun: kalan = GUNLUK_LIMIT_UCRETSIZ
+    else: kalan = max(0, GUNLUK_LIMIT_UCRETSIZ - kayit["kullanim"])
+    return {"kalan": kalan, "limit": GUNLUK_LIMIT_UCRETSIZ}
