@@ -14,7 +14,7 @@ if not api_key:
 genai.configure(api_key=api_key)
 
 # --- SİSTEM TALİMATI (TÜRKİYE + SATIR TAHMİNİ) ---
-# Kodun yapısını bozmadım. 
+# Kodun yapısını  bozmadım. 
 # Sadece "Satır Numarası Tahmini" özelliğini ekledim.
 system_instruction = """
 GÖREVİN: Ses dosyasındaki Kuran okumasını analiz et ve ayeti bul.
@@ -53,7 +53,7 @@ GÖREVİN: Ses dosyasındaki Kuran okumasını analiz et ve ayeti bul.
 
 # SENİN İSTEDİĞİN MODEL (DOKUNMADIM)
 model = genai.GenerativeModel(
-    model_name="gemini-2.5-flash", # Aynen bıraktım
+    model_name="gemini-2.5-flash-lite", # Aynen bıraktım
     system_instruction=system_instruction,
     generation_config={
         "temperature": 0.0, # Sıfır hata toleransı
