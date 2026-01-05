@@ -13,83 +13,93 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 
-# --- SAYFA HARİTASI (SENİN İSTEDİĞİN SABİT YAPI) ---
+# --- HARİTA ---
 SURE_SAYFA_MAP = {
+
+
 
     1: 1, 2: 2, 3: 50, 4: 77, 5: 106, 6: 128, 7: 151, 8: 177, 9: 187, 10: 208,
 
+
+
     11: 221, 12: 235, 13: 249, 14: 255, 15: 262, 16: 267, 17: 282, 18: 293, 19: 305, 20: 312,
+
+
 
     21: 322, 22: 332, 23: 342, 24: 350, 25: 359, 26: 367, 27: 377, 28: 385, 29: 396, 30: 404,
 
+
+
     31: 411, 32: 415, 33: 418, 34: 428, 35: 434, 36: 440, 37: 446, 38: 453, 39: 458, 40: 467,
+
+
 
     41: 477, 42: 483, 43: 489, 44: 496, 45: 499, 46: 502, 47: 507, 48: 511, 49: 515, 50: 518,
 
+
+
     51: 520, 52: 523, 53: 526, 54: 528, 55: 531, 56: 534, 57: 537, 58: 542, 59: 545, 60: 549,
+
+
 
     61: 551, 62: 553, 63: 554, 64: 556, 65: 558, 66: 560, 67: 562, 68: 564, 69: 566, 70: 568,
 
+
+
     71: 570, 72: 572, 73: 574, 74: 575, 75: 577, 76: 578, 77: 580, 78: 582, 79: 583, 80: 585,
+
+
 
     81: 586, 82: 587, 83: 587, 84: 589, 85: 590, 86: 591, 87: 591, 88: 592, 89: 593, 90: 594,
 
+
+
     91: 595, 92: 596, 93: 596, 94: 597, 95: 597, 96: 598, 97: 599, 98: 599, 99: 600, 100: 600,
+
+
 
     101: 601, 102: 601, 103: 602, 104: 602, 105: 602, 106: 603, 107: 603, 108: 603, 109: 604, 110: 604,
 
+
+
     111: 604, 112: 605, 113: 605, 114: 605
+
+
 
 }
 
-# --- SİSTEM TALİMATI (HAFİZ DİSİPLİNİ MODU) ---
+# --- SİSTEM TALİMATI (SALLAMA ÖNLEYİCİ MOD) ---
 system_instruction = """
-GÖREVİN: Ses dosyasındaki Kuran tilavetini analiz et.
+GÖREVİN: Ses kaydındaki Kuran ayetlerini tespit et.
 
-KATİ KURALLAR:
-1. "SALLAMA" YASAK: Ses kaydındaki Arapça kelimeleri %100 net duymuyorsan, gürültü varsa veya emin değilsen KESİNLİKLE boş liste [] döndür. Asla "şuna benziyor" diye tahmin yürütme. Yanlış cevap vermektense cevap vermemek daha iyidir.
+KURALLAR VE YASAKLAR:
+1. "KOPYA ÇEKMEK" YASAK: Sana verilen örnek JSON formatındaki verileri (0, Örnek Sure vb.) sakın çıktı olarak verme. Sadece duyduğun sesi analiz et.
+2. SALLAMAK YASAK: Eğer seste net bir Arapça Kuran tilaveti yoksa, sadece gürültü veya anlaşılmaz sesler varsa, KESİNLİKLE boş liste [] döndür. Rastgele bir ayet atma.
+3. KELİME ANALİZİ: "Ya Eyyühel İnsan" ve "Ya Eyyühennas" gibi benzer kelimelere dikkat et. Duyduğun kelimeler tam olarak hangi ayette geçiyorsa onu bul.
 
-2. KELİME AYRIMI:
-   - "Ya eyyühel İNSAN" ile "Ya eyyühen NAS" gibi fonetik olarak benzeyen yerlere ÇOK DİKKAT ET.
-   - Sadece duyduğun kelimenin birebir geçtiği ayeti bul.
+4. MÜTEŞABİH (BENZER) AYETLER - ÇOK ÖNEMLİ:
+   - Okunan kısım Kuran'da birden fazla surede geçiyorsa, SADECE BİRİNİ DEĞİL, HEPSİNİ LİSTELE.
+   - Örn: "Veylül lil müsallin" hem Maun'da hem başka yerde benzer geçebilir. Hepsini ver.
 
-3. MÜTEŞABİH (BENZER) AYETLER:
-   - Okunan ayet Kuran'da birden fazla yerde geçiyorsa (Müteşabih ise), SADECE İLKİNİ DEĞİL, GEÇTİĞİ TÜM YERLERİ listele.
-   - Örneğin "Veylül lil müsallin" okunduysa, hem Maun suresindeki yerini hem de varsa benzerlerini kontrol et.
-   - Listede her bir eşleşme ayrı bir obje olarak yer almalı.
-
-4. ÇIKTI FORMATI:
-   - "sure_no": Surenin 1-114 arası numarası.
-   - "satir_no": Ayfa (Berkenar) mushafına göre 1-15 arası tahmini satır.
-   - "sayfa_no": Bunu BOŞ bırakabilirsin veya 0 yazabilirsin (Biz dışarıda hesaplayacağız).
-
-İSTENEN FORMAT (JSON):
+ÇIKTI FORMATI (JSON LİSTESİ):
 [
   {
-    "sure_no": 82,
-    "ayet_no": 6,
-    "sure_adi": "İnfitar",
-    "satir_no": "5",
-    "arapca": "...",
-    "meal": "..."
-  },
-  {
-    "sure_no": 99,
-    "ayet_no": 1,
-    "sure_adi": "Zilzal", 
-    "satir_no": "1",
-    "arapca": "...",
-    "meal": "..."
+    "sure_no": 0, 
+    "ayet_no": 0,
+    "sure_adi": "Surenin Adı",
+    "satir_no": "Tahmini Satır (1-15)",
+    "arapca": "Ayetin Metni",
+    "meal": "Meali"
   }
 ]
 """
 
-# MODEL (Dokunmadık, senin 2.5 Lite)
+# MODEL (Aynı kaldı)
 model = genai.GenerativeModel(
     model_name="gemini-2.5-flash-lite", 
     system_instruction=system_instruction,
     generation_config={
-        "temperature": 0.0, # Yaratıcılık sıfır, sadece gerçekler.
+        "temperature": 0.0, 
         "response_mime_type": "application/json"
     }
 )
@@ -106,7 +116,7 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-    return {"durum": "Hafiz AI - Disiplinli Mod (Sallama Yok)"}
+    return {"durum": "Hafiz AI - Anti-Hallucination Modu"}
 
 @app.post("/analiz-et")
 async def analiz_et(file: UploadFile = File(...)):
@@ -114,21 +124,31 @@ async def analiz_et(file: UploadFile = File(...)):
         content = await file.read()
         mime_type = file.content_type or "audio/m4a"
 
-        # PROMPT: Müteşabih uyarısını buraya da ekledik.
+        # PROMPT (Müteşabih ve Sallama Uyarısı ile)
+        prompt = """
+        Bu sesi dinle. 
+        1. Duyduğun Arapça kelimeleri tam olarak tespit et.
+        2. Bu kelimelerin geçtiği TÜM sure ve ayetleri bul (Müteşabih kontrolü yap).
+        3. Eğer seste Kuran okunmuyorsa boş liste [] dön. ASLA tahmin yürütme.
+        """
+
         response = model.generate_content([
-            "Bu sesi analiz et. Müteşabih (tekrar eden veya benzer) ayetler varsa HEPSİNİ ayrı ayrı listele. Emin değilsen boş liste dön.",
+            prompt,
             {"mime_type": mime_type, "data": content}
         ])
         
         sonuclar = json.loads(response.text)
 
-        # --- SAYFA DÜZELTME MOTORU ---
+        # --- SAYFA HESAPLAMA ---
         final_sonuclar = []
         for item in sonuclar:
             sure_no = item.get("sure_no")
             ayet_no = item.get("ayet_no")
+            
+            # Bu kontrol önemli: Model bazen "0" dönerse onu listeye eklemeyelim.
+            if sure_no == 0 or sure_no is None:
+                continue
 
-            # Haritadan kesin sayfayı çekelim
             if sure_no and sure_no in SURE_SAYFA_MAP:
                 baslangic_sayfasi = SURE_SAYFA_MAP[sure_no]
                 ek_sayfa = 0
@@ -137,9 +157,7 @@ async def analiz_et(file: UploadFile = File(...)):
                 
                 hesaplanan_sayfa = min(604, int(baslangic_sayfasi + ek_sayfa))
                 item["sayfa_no"] = hesaplanan_sayfa
-            
-            # Eğer haritada yoksa ve AI tahmin etmemişse 1. sayfayı ver
-            elif "sayfa_no" not in item:
+            else:
                 item["sayfa_no"] = 1
 
             final_sonuclar.append(item)
