@@ -86,7 +86,7 @@ except Exception as e:
 
 # --- YENİ: LİMİT SİSTEMİ ---
 kullanici_limitler = defaultdict(lambda: {"tarih": None, "kullanim": 0, "premium": False})
-GUNLUK_LIMIT_UCRETSIZ = 5
+GUNLUK_LIMIT_UCRETSIZ = 3  # 5'ten 3'e düşürüldü
 
 def temizle_eski_kayitlar():
     """Eski tarihlerin verilerini temizle"""
@@ -187,7 +187,7 @@ async def analiz_et(
         
         sonuclar = json.loads(response.text)
 
-        # --- SAYFA HESAPLAMA (Aynen korundu) ---
+        # --- YENİ: DAHA DOĞRU SAYFA HESAPLAMA ---
         final_sonuclar = []
         for item in sonuclar:
             sure_no = item.get("sure_no")
@@ -198,9 +198,19 @@ async def analiz_et(
 
             if sure_no and sure_no in SURE_SAYFA_MAP:
                 baslangic_sayfasi = SURE_SAYFA_MAP[sure_no]
-                ek_sayfa = 0
-                if ayet_no > 15: 
-                    ek_sayfa = int(ayet_no / 13) 
+                
+                # Daha akıllı sayfa hesaplama
+                # Her sayfada ortalama 15 satır var
+                # Kısa sureler için daha hassas hesaplama
+                if sure_no >= 78:  # Kısa sureler (Nebe'den sonra)
+                    ek_sayfa = 0  # Genelde aynı sayfada kalır
+                elif ayet_no <= 7:
+                    ek_sayfa = 0  # İlk ayetler başlangıç sayfasında
+                elif ayet_no <= 20:
+                    ek_sayfa = 1  # 8-20 arası ayetler +1 sayfa
+                else:
+                    # Uzun sureler için orantılı hesaplama
+                    ek_sayfa = int((ayet_no - 1) / 13)
                 
                 hesaplanan_sayfa = min(604, int(baslangic_sayfasi + ek_sayfa))
                 item["sayfa_no"] = hesaplanan_sayfa
