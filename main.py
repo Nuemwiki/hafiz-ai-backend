@@ -33,7 +33,7 @@ SURE_SAYFA_MAP = {
 
 # --- ÖZEL SAYFA HARİTASI (BAKARA, AL-İ İMRAN VS.) ---
 OZEL_SAYFA_HARITASI = {
-    # BAKARA (Sayfa 2'den 49'a kadar)
+     # BAKARA (Sayfa 2'den 49'a kadar)
     2: [
         1, 6, 17, 25, 30, 38, 49, 58, 62, 70, 77, 84, 89, 94, 102, 106, 113, 120, 127, 135,
         142, 146, 154, 164, 170, 177, 182, 187, 191, 197, 203, 211, 216, 220, 225, 231, 234,
@@ -53,6 +53,7 @@ OZEL_SAYFA_HARITASI = {
     5: [
         1, 3, 6, 10, 14, 18, 24, 32, 37, 42, 46, 51, 58, 65, 71, 77, 83, 90, 96, 104, 109, 114
     ]
+}
 
 # --- SİSTEM TALİMATI (MÜTEŞABİH ODAKLI) ---
 system_instruction = """
