@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-# --- SENİN HAZIRLADIĞIN VERİ SETİNİ İÇERİ ALIYORUZ ---
+# --- VERİ SETİ ---
 from kuran_data import SURE_BASLANGIC_SAYFASI, SURE_SAYFA_DURAKLARI
 
 load_dotenv()
@@ -18,23 +18,33 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 
-# --- SİSTEM TALİMATI ---
+# --- SİSTEM TALİMATI (KATİ MÜTEŞABİH KURALI) ---
 system_instruction = """
-GÖREVİN: Ses kaydındaki Kuran ayetlerini tespit et ve listele.
+GÖREVİN: Ses kaydındaki Kuran ayetlerini tespit et ve JSON listesi olarak döndür.
 
-KURALLAR:
-1. MÜTEŞABİH (BENZER) AYETLER:
-   - "Ya eyyühellezine amenu", "Ya eyyühel insan" gibi kalıplar çok yerde geçer.
-   - TEK BİR SONUÇ DÖNME. Bu ifadenin geçtiği TÜM sure ve ayetleri listele.
-   - Amacımız tüm ihtimalleri kullanıcıya sunmak.
-   - Dinlediğin kısımı analiz ettiğinde devamı farklı olan bir çok ayet varsa KESİNLİKLE hepsini listele.
+ÇOK ÖNEMLİ - MÜTEŞABİH(BENZER) AYET YÖNETİMİ:
+1. MODELİN, "KULLANICI MUHTEMELEN BUNU KASTETTİ" DEMESİ YASAKTIR.
+2. Eğer okunan ifade kısa bir kalıpsa (Örn: "Ve ma min dabbetin", "Ya eyyühellezine amenu", "Küllü nefsin zaikatül mevt"), bu kelimelerin geçtiği TÜM ayetleri listelemek ZORUNDASIN.
+3. Sadece en meşhur olanı değil, kenarda köşede kalmış benzerleri de getir.
 
-2. SALLAMA YASAK:
-   - Ses anlaşılmıyorsa boş liste [] dön.
+ÖRNEK SENARYO:
+- Ses: "Ve ma min dabbetin"
+- Yanlış Davranış: Sadece Hud 6. ayeti verip bitirmek.
+- DOĞRU DAVRANIŞ: 
+  [
+    {"sure_adi": "Hud", "ayet_no": 6, "arapca": "Ve ma min dabbetin..."},
+    {"sure_adi": "Hud", "ayet_no": 56, "arapca": "...ma min dabbetin illa..."},
+    {"sure_adi": "Nahl", "ayet_no": 61, "arapca": "...ma tereke aleyha min dabbetin..."},
+    {"sure_adi": "Fatır", "ayet_no": 45, "arapca": "...min dabbetin..."}
+  ]
+  (İçinde "min dabbetin" geçenleri tarayıp listele).
+
+DİĞER KURALLAR:
+- Ses anlaşılmıyorsa boş liste [] dön.
 
 ÇIKTI FORMATI (SADECE JSON):
 [
-  { "sure_no": 82, "ayet_no": 6, "sure_adi": "İnfitar", "arapca": "...", "meal": "..." }
+  { "sure_no": 11, "ayet_no": 6, "sure_adi": "Hud", "arapca": "...", "meal": "..." }
 ]
 """
 
@@ -87,7 +97,7 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-    return {"durum": "Hafiz AI - Hafiz Verisiyle Tam Dogruluk"}
+    return {"durum": "Hafiz AI - Kati Mutesabih Modu"}
 
 # --- JSON TEMİZLEYİCİ ---
 def clean_json_response(text):
@@ -100,6 +110,7 @@ def clean_json_response(text):
 @app.post("/analiz-et")
 async def analiz_et(file: UploadFile = File(...), x_user_id: str = Header(None, alias="X-User-ID"), x_premium: str = Header("false", alias="X-Premium")):
     try:
+        # Limit
         kullanici_id = x_user_id or "anonim"
         is_premium = x_premium.lower() == "true"
         izin_var, limit_bilgisi = limit_kontrol(kullanici_id, is_premium)
@@ -108,8 +119,9 @@ async def analiz_et(file: UploadFile = File(...), x_user_id: str = Header(None, 
         content = await file.read()
         mime_type = file.content_type or "audio/m4a"
 
+        # PROMPT (Modeli zorluyoruz)
         response = model.generate_content([
-            "Bu sesi dinle. Müteşabih (benzer) ayetler varsa hepsini listele. Kuran değilse boş dön. Cevabı sadece saf JSON olarak ver.",
+            "Bu sesi dinle. Eğer okunan kısım Kuran'da birden fazla yerde geçiyorsa (Müteşabih ise), ASLA tek sonuç verme. Hepsini listele. Cevap sadece saf JSON olsun.",
             {"mime_type": mime_type, "data": content}
         ])
         
@@ -119,7 +131,7 @@ async def analiz_et(file: UploadFile = File(...), x_user_id: str = Header(None, 
         except json.JSONDecodeError:
             return {"sonuclar": [], "hata": "JSON format hatası", "limit_bilgisi": limit_bilgisi}
 
-        # --- SAYFA BULMA MOTORU (HAFIZ VERİSİ) ---
+        # --- SAYFA HESAPLAMA MOTORU ---
         final_sonuclar = []
         for item in sonuclar:
             sure_no = item.get("sure_no")
@@ -129,7 +141,6 @@ async def analiz_et(file: UploadFile = File(...), x_user_id: str = Header(None, 
 
             hesaplanan_sayfa = 1
 
-            # ARTIK HEPSİ KESİN VERİ
             if sure_no in SURE_SAYFA_DURAKLARI and sure_no in SURE_BASLANGIC_SAYFASI:
                 baslangic_sayfasi = SURE_BASLANGIC_SAYFASI[sure_no]
                 ayet_listesi = SURE_SAYFA_DURAKLARI[sure_no]
@@ -143,7 +154,6 @@ async def analiz_et(file: UploadFile = File(...), x_user_id: str = Header(None, 
                 
                 hesaplanan_sayfa = baslangic_sayfasi + sayfa_farki
             
-            # Garanti olsun diye sınır koyalım
             hesaplanan_sayfa = min(604, hesaplanan_sayfa)
             item["sayfa_no"] = hesaplanan_sayfa
             final_sonuclar.append(item)
