@@ -61,7 +61,7 @@ try:
     )
 except Exception:
     model = genai.GenerativeModel(
-        model_name="gemini-2.5-flash-lite", 
+        model_name="gemini-2.5-flash", 
         system_instruction=system_instruction,
         generation_config={"temperature": 0.0, "response_mime_type": "application/json"}
     )
