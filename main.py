@@ -18,55 +18,40 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 
-# --- SİSTEM TALİMATI (KATİ MÜTEŞABİH KURALI) ---
+# --- OPTİMİZE EDİLMİŞ SİSTEM TALİMATI (Daha Kısa = Daha Hızlı) ---
 system_instruction = """
-GÖREVİN: Ses kaydındaki Kuran ayetlerini tespit et ve JSON listesi olarak döndür.
+Ses: Kuran tilaveti analiz et.
 
-ÇOK ÖNEMLİ - MÜTEŞABİH(BENZER) AYET YÖNETİMİ:
-1. MODELİN, "KULLANICI MUHTEMELEN BUNU KASTETTİ" DEMESİ YASAKTIR.
-2. Eğer okunan ifade kısa bir kalıpsa (Örn: "Ve ma min dabbetin", "Ya eyyühellezine amenu", "Küllü nefsin zaikatül mevt"), bu kelimelerin geçtiği TÜM ayetleri listelemek ZORUNDASIN.
-3. Sadece en meşhur olanı değil, kenarda köşede kalmış benzerleri de getir.
+KURALLAR:
+1. Kuran yok → []
+2. Türkiye Ayfa sayfa sistemi kullan
+3. Müteşabih varsa hepsini listele
 
-ÖRNEK SENARYO:
-- Ses: "Ve ma min dabbetin"
-- Yanlış Davranış: Sadece Hud 6. ayeti verip bitirmek.
-- DOĞRU DAVRANIŞ: 
-  [
-    {"sure_adi": "Hud", "ayet_no": 6, "arapca": "Ve ma min dabbetin..."},
-    {"sure_adi": "Hud", "ayet_no": 56, "arapca": "...ma min dabbetin illa..."},
-    {"sure_adi": "Nahl", "ayet_no": 61, "arapca": "...ma tereke aleyha min dabbetin..."},
-    {"sure_adi": "Fatır", "ayet_no": 45, "arapca": "...min dabbetin..."}
-  ]
-  (İçinde "min dabbetin" geçenleri tarayıp listele).
-
-DİĞER KURALLAR:
-- Ses anlaşılmıyorsa boş liste [] dön.
-
-ÇIKTI FORMATI (SADECE JSON):
-[
-  { "sure_no": 11, "ayet_no": 6, "sure_adi": "Hud", "arapca": "...", "meal": "..." }
-]
+FORMAT:
+[{"sure_adi":"...", "ayet_no":0, "satir_no":"1-15", "arapca":"...", "meal":"..."}]
 """
 
-# --- CACHE ---
+# --- CACHE (Kısa instruction = Az token = Ucuz) ---
 try:
     cached_content = genai.caching.CachedContent.create(
         model="gemini-2.5-flash",
         system_instruction=system_instruction,
-        ttl=timedelta(hours=1),
+        ttl=timedelta(hours=2),  # 2 saate çıkarıldı
     )
     model = genai.GenerativeModel.from_cached_content(
         cached_content=cached_content,
         generation_config={"temperature": 0.0, "response_mime_type": "application/json"}
     )
-except Exception:
+    print("✅ Cache aktif (2 saat)")
+except Exception as e:
+    print(f"⚠️ Cache yok: {e}")
     model = genai.GenerativeModel(
         model_name="gemini-2.5-flash", 
         system_instruction=system_instruction,
         generation_config={"temperature": 0.0, "response_mime_type": "application/json"}
     )
 
-# --- LİMİT SİSTEMİ ---
+# --- LİMİT ---
 kullanici_limitler = defaultdict(lambda: {"tarih": None, "kullanim": 0, "premium": False})
 GUNLUK_LIMIT_UCRETSIZ = 3
 
@@ -78,7 +63,9 @@ def limit_kontrol(kullanici_id: str, is_premium: bool = False):
         kayit["kullanim"] = 0
         kayit["premium"] = is_premium
     
-    if is_premium or kayit["premium"]: return True, None
+    if is_premium or kayit["premium"]: 
+        return True, None
+    
     if kayit["kullanim"] >= GUNLUK_LIMIT_UCRETSIZ:
         return False, {"limit_doldu": True, "kalan": 0, "limit": GUNLUK_LIMIT_UCRETSIZ}
     
@@ -97,10 +84,9 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-    return {"durum": "Hafiz AI - Kati Mutesabih Modu"}
+    return {"durum": "Hafiz AI - Ultra Fast Mode", "cache": "2h", "limit": GUNLUK_LIMIT_UCRETSIZ}
 
-# --- JSON TEMİZLEYİCİ ---
-def clean_json_response(text):
+def clean_json(text):
     text = text.strip()
     if text.startswith("```json"): text = text[7:]
     elif text.startswith("```"): text = text[3:]
@@ -108,38 +94,45 @@ def clean_json_response(text):
     return text.strip()
 
 @app.post("/analiz-et")
-async def analiz_et(file: UploadFile = File(...), x_user_id: str = Header(None, alias="X-User-ID"), x_premium: str = Header("false", alias="X-Premium")):
+async def analiz_et(
+    file: UploadFile = File(...), 
+    x_user_id: str = Header(None, alias="X-User-ID"), 
+    x_premium: str = Header("false", alias="X-Premium")
+):
     try:
         # Limit
         kullanici_id = x_user_id or "anonim"
         is_premium = x_premium.lower() == "true"
         izin_var, limit_bilgisi = limit_kontrol(kullanici_id, is_premium)
-        if not izin_var: raise HTTPException(status_code=429, detail=limit_bilgisi)
+        if not izin_var: 
+            raise HTTPException(status_code=429, detail=limit_bilgisi)
         
         content = await file.read()
         mime_type = file.content_type or "audio/m4a"
 
-        # PROMPT (Modeli zorluyoruz)
+        # OPTİMİZE PROMPT (Kısa = Hızlı)
         response = model.generate_content([
-            "Bu sesi dinle. Eğer okunan kısım Kuran'da birden fazla yerde geçiyorsa (Müteşabih ise), ASLA tek sonuç verme. Hepsini listele. Cevap sadece saf JSON olsun.",
+            "Analiz et. Müteşabih varsa hepsini listele.",
             {"mime_type": mime_type, "data": content}
         ])
         
-        cleaned_text = clean_json_response(response.text)
+        cleaned = clean_json(response.text)
         try:
-            sonuclar = json.loads(cleaned_text)
+            sonuclar = json.loads(cleaned)
         except json.JSONDecodeError:
-            return {"sonuclar": [], "hata": "JSON format hatası", "limit_bilgisi": limit_bilgisi}
+            return {"sonuclar": [], "bulunan_adet": 0, "limit_bilgisi": limit_bilgisi}
 
-        # --- SAYFA HESAPLAMA MOTORU ---
+        # --- SAYFA + KONUM HESAPLAMA ---
         final_sonuclar = []
         for item in sonuclar:
             sure_no = item.get("sure_no")
             ayet_no = item.get("ayet_no")
             
-            if not sure_no or sure_no == 0: continue
+            if not sure_no or sure_no == 0: 
+                continue
 
             hesaplanan_sayfa = 1
+            tahmini_konum = "orta"  # YENİ: Sayfadaki konumu
 
             if sure_no in SURE_SAYFA_DURAKLARI and sure_no in SURE_BASLANGIC_SAYFASI:
                 baslangic_sayfasi = SURE_BASLANGIC_SAYFASI[sure_no]
@@ -153,15 +146,40 @@ async def analiz_et(file: UploadFile = File(...), x_user_id: str = Header(None, 
                         break 
                 
                 hesaplanan_sayfa = baslangic_sayfasi + sayfa_farki
+                
+                # YENİ: Sayfadaki konumu hesapla
+                if sayfa_farki < len(ayet_listesi):
+                    # Ayet, sayfanın hangi bölümünde?
+                    mevcut_sayfa_baslangic = ayet_listesi[sayfa_farki] if sayfa_farki < len(ayet_listesi) else 1
+                    sonraki_sayfa_baslangic = ayet_listesi[sayfa_farki + 1] if sayfa_farki + 1 < len(ayet_listesi) else mevcut_sayfa_baslangic + 15
+                    
+                    sayfa_icindeki_ayet_sirasi = ayet_no - mevcut_sayfa_baslangic
+                    toplam_ayet = sonraki_sayfa_baslangic - mevcut_sayfa_baslangic
+                    
+                    if toplam_ayet > 0:
+                        oran = sayfa_icindeki_ayet_sirasi / toplam_ayet
+                        if oran < 0.33:
+                            tahmini_konum = "üst"
+                        elif oran < 0.66:
+                            tahmini_konum = "orta"
+                        else:
+                            tahmini_konum = "alt"
             
             hesaplanan_sayfa = min(604, hesaplanan_sayfa)
             item["sayfa_no"] = hesaplanan_sayfa
+            item["sayfa_konum"] = tahmini_konum  # YENİ
             final_sonuclar.append(item)
         
-        return {"sonuclar": final_sonuclar, "limit_bilgisi": limit_bilgisi}
+        return {
+            "sonuclar": final_sonuclar, 
+            "bulunan_adet": len(final_sonuclar),  # YENİ
+            "limit_bilgisi": limit_bilgisi
+        }
 
-    except HTTPException: raise
-    except Exception as e: return {"hata": str(e)}
+    except HTTPException: 
+        raise
+    except Exception as e: 
+        return {"hata": str(e), "bulunan_adet": 0}
 
 @app.post("/video-izlendi")
 async def video_izlendi(x_user_id: str = Header(None, alias="X-User-ID")):
@@ -171,7 +189,8 @@ async def video_izlendi(x_user_id: str = Header(None, alias="X-User-ID")):
     if kayit["tarih"] != bugun:
         kayit["tarih"] = bugun
         kayit["kullanim"] = 0
-    if kayit["kullanim"] > 0: kayit["kullanim"] -= 1
+    if kayit["kullanim"] > 0: 
+        kayit["kullanim"] -= 1
     return {"basarili": True, "kalan": GUNLUK_LIMIT_UCRETSIZ - kayit["kullanim"]}
 
 @app.get("/limit-durumu")
@@ -179,6 +198,17 @@ async def limit_durumu(x_user_id: str = Header(None, alias="X-User-ID")):
     kullanici_id = x_user_id or "anonim"
     bugun = datetime.now().date()
     kayit = kullanici_limitler[kullanici_id]
-    if kayit["tarih"] != bugun: kalan = GUNLUK_LIMIT_UCRETSIZ
-    else: kalan = max(0, GUNLUK_LIMIT_UCRETSIZ - kayit["kullanim"])
+    if kayit["tarih"] != bugun: 
+        kalan = GUNLUK_LIMIT_UCRETSIZ
+    else: 
+        kalan = max(0, GUNLUK_LIMIT_UCRETSIZ - kayit["kullanim"])
     return {"kalan": kalan, "limit": GUNLUK_LIMIT_UCRETSIZ}
+
+@app.on_event("shutdown")
+def cleanup():
+    try:
+        if 'cached_content' in globals():
+            cached_content.delete()
+            print("✅ Cache temizlendi")
+    except:
+        pass
