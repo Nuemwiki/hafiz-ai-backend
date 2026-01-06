@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 
 # --- VERİ SETİ ---
+# kuran_data.py dosyasının yanında olduğundan emin ol
 from kuran_data import SURE_BASLANGIC_SAYFASI, SURE_SAYFA_DURAKLARI
 
 load_dotenv()
@@ -18,7 +19,7 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 
-# --- OPTİMİZE EDİLMİŞ SİSTEM TALİMATI (Daha Kısa = Daha Hızlı = Daha Ucuz) ---
+# --- SİSTEM TALİMATI ---
 system_instruction = """
 GÖREV: Sesteki Kuran ayetlerini bul.
 
@@ -31,10 +32,10 @@ KURALLAR:
 [{"sure_no":1, "ayet_no":1, "sure_adi":"Fatiha", "arapca":"...", "meal":"..."}]
 """
 
-# --- CACHE (Maliyet Düşürücü) ---
+# --- CACHE ---
 try:
     cached_content = genai.caching.CachedContent.create(
-        model="gemini-2.5-flash", # En hızlı ve doğal ses modeli
+        model="gemini-2.5-flash",
         system_instruction=system_instruction,
         ttl=timedelta(hours=2), 
     )
@@ -43,7 +44,6 @@ try:
         generation_config={"temperature": 0.0, "response_mime_type": "application/json"}
     )
 except Exception:
-    # Cache çalışmazsa normal devam et
     model = genai.GenerativeModel(
         model_name="gemini-2.5-flash", 
         system_instruction=system_instruction,
@@ -81,7 +81,7 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-    return {"durum": "Hafiz AI - Optimize Edilmis Konum Modu"}
+    return {"durum": "Hafiz AI - Calisiyor"}
 
 def clean_json(text):
     text = text.strip()
@@ -97,7 +97,7 @@ async def analiz_et(
     x_premium: str = Header("false", alias="X-Premium")
 ):
     try:
-        # Limit Kontrolü
+        # Limit
         kullanici_id = x_user_id or "anonim"
         is_premium = x_premium.lower() == "true"
         izin_var, limit_bilgisi = limit_kontrol(kullanici_id, is_premium)
@@ -106,7 +106,6 @@ async def analiz_et(
         content = await file.read()
         mime_type = file.content_type or "audio/m4a"
 
-        # Prompt (Kısa ve Net)
         response = model.generate_content([
             "Analiz et. Müteşabihleri bul.",
             {"mime_type": mime_type, "data": content}
@@ -118,7 +117,7 @@ async def analiz_et(
         except json.JSONDecodeError:
             return {"sonuclar": [], "bulunan_adet": 0, "hata": "JSON hatası", "limit_bilgisi": limit_bilgisi}
 
-        # --- SAYFA VE KONUM HESAPLAMA MOTORU ---
+        # --- SAYFA VE KONUM HESAPLAMA ---
         final_sonuclar = []
         for item in sonuclar:
             sure_no = item.get("sure_no")
@@ -127,16 +126,13 @@ async def analiz_et(
             if not sure_no or sure_no == 0: continue
 
             hesaplanan_sayfa = 1
-            tahmini_konum = "orta" # Varsayılan
+            tahmini_konum = "orta"
 
-            # Hafız Verisi Varsa Hesapla
             if sure_no in SURE_SAYFA_DURAKLARI and sure_no in SURE_BASLANGIC_SAYFASI:
                 baslangic_sayfasi = SURE_BASLANGIC_SAYFASI[sure_no]
                 ayet_listesi = SURE_SAYFA_DURAKLARI[sure_no]
                 
                 sayfa_farki = 0
-                
-                # Sayfayı Bulma Döngüsü
                 for index, baslangic_ayeti in enumerate(ayet_listesi):
                     if ayet_no >= baslangic_ayeti:
                         sayfa_farki = index
@@ -145,13 +141,11 @@ async def analiz_et(
                 
                 hesaplanan_sayfa = baslangic_sayfasi + sayfa_farki
                 
-                # --- KONUM HESAPLAMA (ÜST / ORTA / ALT) ---
+                # --- KONUM HESABI DÜZELTİLDİ ---
                 if sayfa_farki < len(ayet_listesi):
-                    # O sayfanın ilk ayeti
-                    mevcut_sayfa_baslangic_ayeti = ayet_listesi[sayfa_farki]
+                    # HATALI OLAN KISIM BURASIYDI, DÜZELTİLDİ:
+                    mevcut_sayfa_baslangic = ayet_listesi[sayfa_farki]
                     
-                    # O sayfanın son ayeti (Bir sonraki sayfanın başı - 1)
-                    # Eğer son sayfadaysak tahminen +15 ekliyoruz
                     if sayfa_farki + 1 < len(ayet_listesi):
                         sonraki_sayfa_baslangic = ayet_listesi[sayfa_farki + 1]
                     else:
@@ -169,16 +163,15 @@ async def analiz_et(
                         else:
                             tahmini_konum = "alt"
 
-            # Sayfa Sınırı
             hesaplanan_sayfa = min(604, hesaplanan_sayfa)
             
             item["sayfa_no"] = hesaplanan_sayfa
-            item["sayfa_konum"] = tahmini_konum # Frontend bu veriyi kullanacak
+            item["sayfa_konum"] = tahmini_konum
             final_sonuclar.append(item)
         
         return {
             "sonuclar": final_sonuclar, 
-            "bulunan_adet": len(final_sonuclar), # App'te gösterilecek sayı
+            "bulunan_adet": len(final_sonuclar), 
             "limit_bilgisi": limit_bilgisi
         }
 
