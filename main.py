@@ -51,7 +51,7 @@ DİĞER KURALLAR:
 # --- CACHE ---
 try:
     cached_content = genai.caching.CachedContent.create(
-        model="gemini-2.0-flash-exp",
+        model="gemini-2.5-flash",
         system_instruction=system_instruction,
         ttl=timedelta(hours=1),
     )
