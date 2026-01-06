@@ -34,7 +34,7 @@ KURALLAR:
 # --- CACHE (Maliyet Düşürücü) ---
 try:
     cached_content = genai.caching.CachedContent.create(
-        model="gemini-2.0-flash-exp", # En hızlı ve doğal ses modeli
+        model="gemini-2.5-flash", # En hızlı ve doğal ses modeli
         system_instruction=system_instruction,
         ttl=timedelta(hours=2), 
     )
@@ -45,7 +45,7 @@ try:
 except Exception:
     # Cache çalışmazsa normal devam et
     model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash-exp", 
+        model_name="gemini-2.5-flash", 
         system_instruction=system_instruction,
         generation_config={"temperature": 0.0, "response_mime_type": "application/json"}
     )
